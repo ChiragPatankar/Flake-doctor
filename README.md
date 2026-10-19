@@ -1,74 +1,73 @@
-# flake-doctor
+<div align="center">
 
-**Find the flaky tests hiding in your CI history, then prove what causes them and that the fix works.**
+# 🩺 flake-doctor
+
+**Find the flaky tests hiding in your CI history.<br>Then prove what causes them, and that the fix works.**
 
 [![CI](https://github.com/ChiragPatankar/flake-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ChiragPatankar/flake-doctor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![pytest](https://img.shields.io/badge/for-pytest%20%2B%20GitHub%20Actions-orange)
 
-Every team with CI has tests that fail for no reason. Someone clicks **Re-run**, it goes green, and
-the flaky test survives to waste the next person's afternoon. Nobody keeps a list of which tests do
-this, but your CI history already contains it: every time a job **failed and then passed on the same
-commit**, a test flaked.
+<img src="docs/demo.svg" alt="flake-doctor scan finding 7 flaky tests in aiohttp's CI history" width="860">
 
-flake-doctor reads that history, tells you which pytest tests are flaky and what they cost, then
-helps you diagnose and fix each one with evidence instead of `sleep()` and retries.
+<sub>A real scan of aiohttp's last 30 days of CI, replayed. Numbers and messages are from the actual run.</sub>
 
-```
-$ flake-doctor scan aio-libs/aiohttp
-aio-libs/aiohttp: 4180 runs, 2026-09-24 to 2026-10-19
-flaky: 7   suspect: 0   real failures (hidden): 15   failed jobs: 610
+[**Quick start**](#-quick-start) · [**How it works**](#-how-it-works) · [**Real results**](#-results-on-real-projects) · [**Diagnose a test**](#-diagnose-one-test-locally) · [**FAQ**](#-faq)
 
-[FLAKY] tests/test_client_functional.py::test_keepalive_timeout_async_sleep
-    passed on the same commit after failing 3x; 3 failures, 21 CI min, last 2026-09-27; workflow: CI
-    aiohttp.client_exceptions.ClientOSError: [Errno 104] Connection reset by peer
-[FLAKY] tests/test_web_websocket.py::test_receive_does_not_reset_heartbeat
-    passed on the same commit after failing 2x; 2 failures, 18 CI min, last 2026-09-24; workflow: CI
-    pytest.PytestUnraisableExceptionWarning: Exception ignored in: finalizer of : <coroutine object ...>
-[FLAKY] tests/test_helpers.py::test_when_timeout_smaller_second[pyloop]
-    passed on the same commit after failing 1x; 1 failures, 5 CI min, last 2026-09-28; workflow: CI
-    assert 0.014999999999986358 == 0 ± 0.001
-...
-```
-<sub>Real output (trimmed), from a 30-day scan in October 2026. More in [Results on real projects](#results-on-real-projects).</sub>
+</div>
 
-## What it does
+---
 
-| Step | Command | How |
-|------|---------|-----|
-| **Find** | `flake-doctor scan` | Reads your GitHub Actions runs and job logs. A test is **flaky** when the same job passed on the same commit after it failed (a re-run, or a push and a PR run disagreeing), or when pytest-rerunfailures had to retry it. Tests failing on 3+ commits across 2+ branches are **suspects**. Failures confined to one branch look like real bugs and are kept out of the list. |
-| **Diagnose** | `flake-doctor run`, `polluter`, `hints` | Reruns the test alone and in shuffled suite order (optionally with every CPU core busy, like a crowded CI runner) and classifies it: intrinsic, order-dependent, needs-other-tests, or not reproduced. For order-dependent tests it bisects to the exact test that leaks state. |
-| **Fix** | the Claude Code plugin, or you | Fix the cause (fake the clock, wait for the thread, stop mutating the shared dict), not the symptom, then rerun enough times to show it's gone. |
+Every team with CI has tests that fail for no reason. Someone clicks **Re-run**, it goes green, and the flaky
+test lives on to waste the next person's afternoon. Nobody keeps a list of which tests do this, but **your CI
+history already does**: every time a job *failed and then passed on the same commit*, a test flaked.
 
-## Quick start
+flake-doctor reads that history, tells you which pytest tests are flaky and what they cost you, then helps you
+diagnose and fix each one with evidence instead of `sleep()` and retries.
+
+> [!TIP]
+> Try it on any public repo. You only need a GitHub token that can read it:
+> `flake-doctor scan pydantic/pydantic`
+
+## 🚀 Quick start
+
+<details open>
+<summary><b>Command line</b>: scan any repo you can read</summary>
+<br>
 
 ```bash
-pipx install flake-doctor        # or: uvx flake-doctor ...   (or pip install git+https://github.com/ChiragPatankar/flake-doctor)
-export GITHUB_TOKEN=...          # any token that can read the repo's Actions; `gh auth login` also works
-flake-doctor scan owner/repo     # or run it inside a clone and omit owner/repo
+pipx install git+https://github.com/ChiragPatankar/flake-doctor   # PyPI release coming: pipx install flake-doctor
+export GITHUB_TOKEN=...                                            # or `gh auth login`, or ~/.config/flake-doctor/token
+flake-doctor scan owner/repo                                       # or run it inside a clone and omit owner/repo
 ```
 
-Useful options: `--days 60`, `--workflow tests` (only matching workflows), `--branch main`,
-`--format markdown|json`, `--output report.md`, `--max-logs 400` (download budget; logs that can prove
-flakiness are read first), `--scan-passing` (also read passing logs to catch rerunfailures retries),
-`--all` (include likely-real failures), `--fail-on-flaky`.
+| Option | What it does |
+|--------|--------------|
+| `--days 60` | how far back to look (default 30) |
+| `--workflow tests` | only workflows whose name or file matches |
+| `--branch main` | only runs on one branch |
+| `--format markdown\|json`, `--output FILE` | report format and destination (`--json-output`/`--markdown-output` for extra copies) |
+| `--max-logs 400` | download budget; logs that can *prove* flakiness are read first |
+| `--scan-passing` | also read passing logs, to catch tests pytest-rerunfailures quietly retried |
+| `--all` | also list failures that look real rather than flaky |
+| `--fail-on-flaky` | exit 1 if anything flaky is found (for CI gates) |
 
-Without a token, `scan` still lists **jobs** that failed and then passed on the same commit (that needs no
-logs), which also works for projects that don't use pytest.
+Job logs are cached in `~/.cache/flake-doctor`, so a repeat scan only downloads what's new.
 
-Job logs are cached in `~/.cache/flake-doctor`, so repeat scans only download what's new.
+</details>
 
-### As a GitHub Action
-
-Get a **Flaky test report** issue that updates itself every week:
+<details>
+<summary><b>GitHub Action</b>: a "Flaky test report" issue that updates itself</summary>
+<br>
 
 ```yaml
 # .github/workflows/flaky-tests.yml
 name: Flaky test report
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * 1"     # every Monday
   workflow_dispatch:
 
 permissions:
@@ -82,15 +81,114 @@ jobs:
       - uses: ChiragPatankar/flake-doctor@v0
         with:
           days: 30
-          workflow: tests          # optional: only your test workflow(s)
+          workflow: tests     # optional: only your test workflow(s)
 ```
 
 The report also goes to the job summary. Outputs: `flaky-count`, `suspect-count`, `report` (JSON path).
-Set `fail-on-flaky: true` to make the job fail when flaky tests are found.
+Set `fail-on-flaky: true` to fail the job when flaky tests are found, or `create-issue: false` to skip the issue.
 
-## Diagnosing one test locally
+</details>
+
+<details>
+<summary><b>Claude Code plugin</b>: let Claude find, fix and verify them</summary>
+<br>
 
 ```
+/plugin marketplace add ChiragPatankar/flake-doctor
+/plugin install flake-doctor@flake-doctor
+```
+
+Then ask things like *"CI keeps going red, which tests are flaky?"* or *"test_checkout fails on CI but never
+locally, fix it."* The skill scans the CI history, measures before touching code, finds the mechanism (with a
+deterministic reproduction where it can), fixes the cause rather than adding retries, and reruns enough times
+to make "it passed" mean something.
+
+</details>
+
+## 🔍 How it works
+
+```mermaid
+flowchart LR
+    H[("GitHub Actions<br>runs + job logs")] --> S["<b>flake-doctor scan</b>"]
+    S --> F["🔴 <b>flaky</b><br>failed, then passed<br>on the same commit"]
+    S --> P["🟠 <b>suspect</b><br>fails on many branches<br>while CI mostly passes"]
+    S --> X["⚪ hidden<br>real failures, breakages,<br>lint / infra"]
+    F --> R["<b>flake-doctor run</b><br>alone · shuffled · under load"]
+    P --> R
+    R -->|order-dependent| PO["<b>flake-doctor polluter</b><br>bisects to the leaking test"]
+    R -->|intrinsic| HI["<b>flake-doctor hints</b><br>clock · sleep · random · sets · globals"]
+    PO --> FIX["fix the cause<br>+ rerun to prove it"]
+    HI --> FIX
+```
+
+| Verdict | Evidence required |
+|---------|-------------------|
+| 🔴 **flaky** | the same job (workflow + job name + matrix) **passed on the same commit** after the test failed, or **pytest-rerunfailures** had to retry it |
+| 🟠 **suspect** | failed on **3+ commits across 2+ branches**, *and* the workflow passed at least half its runs around those failures |
+| ⚪ **hidden** | anything else: failures on one branch (probably a real bug), failures while CI was red everywhere (a breakage, e.g. a new dependency release), and failed jobs with no pytest failures at all |
+
+> [!NOTE]
+> That last rule matters. On fastapi, 29 tests failed on 12 branches, which looks flaky at first glance. But the
+> workflow passed only 13% of runs in that window: a dependency release had broken everything. flake-doctor
+> keeps those out of the flaky list.
+
+## 📊 Results on real projects
+
+30 days of GitHub Actions history (19 Sep to 19 Oct 2026), default settings:
+
+| Project | Runs scanned | Failed jobs | Flaky tests | What they were |
+|---------|-------------:|------------:|------------:|----------------|
+| [pydantic](https://github.com/pydantic/pydantic) | 1,241 | 1,144 | **7** | 4 date tests that fail whenever CI runs across midnight UTC, plus 3 in third-party suites it runs |
+| [aiohttp](https://github.com/aio-libs/aiohttp) | 4,180 <sub>(25 days)</sub> | 610 | **7** | keep-alive and read timeouts hitting connection resets, a WebSocket heartbeat test, a timing assertion |
+| [fastapi](https://github.com/fastapi/fastapi) | 3,119 | 257 | 0 | correctly *not* flagged: 29 "everywhere" failures were a dependency breakage |
+| [pandas](https://github.com/pandas-dev/pandas) | 2,836 <sub>(7 days)</sub> | 500 | 0 | the jobs that passed on retry failed for infrastructure reasons (HTTP 500s, build errors) |
+
+<details>
+<summary><b>The pydantic bug: a test that only fails after midnight</b></summary>
+<br>
+
+In `tests/test_datetime.py`, `date.today()` is evaluated inside `@pytest.mark.parametrize`, which runs when
+tests are **collected**, not when they run (simplified):
+
+```python
+@pytest.mark.parametrize('value', (date.today(), date.today() + timedelta(1), '2064-06-01'))
+def test_past_date_validation_fails(value, past_date_type):
+    with pytest.raises(ValidationError):   # "today" must not count as a past date
+        ...
+```
+
+A macOS job collected tests on 10 October and ran them after midnight UTC. By then "today" was yesterday,
+so `PastDate` accepted it:
+
+```
+value = datetime.date(2026, 10, 10)
+E       Failed: DID NOT RAISE ValidationError
+```
+
+The re-run passed 50 minutes later. It's the kind of failure nobody investigates, because it only ever happens
+to someone else's job, late at night.
+
+</details>
+
+<details>
+<summary><b>Most red CI isn't flaky tests</b></summary>
+<br>
+
+Across these four projects, the large majority of failed jobs were lint, type checks, docs builds, bots and
+infrastructure. flake-doctor reports those separately ("failed jobs without pytest failures" and "jobs that
+failed and then passed on the same commit") so they don't drown out the tests.
+
+A first 30-day scan of a busy repository takes a few minutes and about 1,000 API requests, mostly log
+downloads. Repeat scans reuse the cache and take 20 to 90 requests.
+
+</details>
+
+## 🧪 Diagnose one test locally
+
+Once you know *which* test is flaky, find out *why*. Real output from
+[`examples/warehouse`](examples/warehouse), a 176-test project with a buried bug:
+
+```console
 $ flake-doctor run "tests/test_checkout.py::test_order_total[standard]"
 
 Isolated runs: 0/10 failed (0%)
@@ -105,99 +203,111 @@ Verdict: ORDER-DEPENDENT
   Next: flake-doctor polluter 'tests/test_checkout.py::test_order_total[standard]' --seed 868885 --scope tests
 ```
 
-That's real output from [`examples/warehouse`](examples/warehouse): out of 176 tests, one parametrized
-case of a promotions test mutates a dict returned by an `lru_cache`, which silently reprices the
-product for every later test (and, in production, for every later customer).
+One parametrized promotions test mutates a dict returned by an `lru_cache`, silently repricing the product for
+every later test (and, in production, for every later customer).
 
 | Command | What you get |
 |---------|--------------|
-| `flake-doctor run <node_id>` | failure rate alone and shuffled, grouped failure messages, tests correlated with failure, a verdict, and how many clean runs it takes to trust a fix. `--stress` loads every CPU core; `--json` saves results for before/after comparisons. |
-| `flake-doctor polluter <node_id> --seed N` | the test that breaks it when run first, plus a two-test reproduction command. |
-| `flake-doctor hints <node_id>` | suspicious lines in the test and the project code it imports: sleeps, real clocks, unseeded randomness, set/filesystem ordering, unrestored globals and env vars, network calls, fixed ports and paths. |
+| `flake-doctor run <test>` | failure rate alone and in shuffled suite order, grouped failure messages, tests that correlate with failure, a verdict, and how many clean runs it takes to trust a fix. `--stress` loads every CPU core like a crowded CI runner; `--json` saves before/after results. |
+| `flake-doctor polluter <test> --seed N` | the exact test that breaks it when run first, plus a two-test reproduction command |
+| `flake-doctor hints <test>` | suspicious lines in the test and the code it imports: sleeps, real clocks, unseeded randomness, set/filesystem ordering, unrestored globals and env vars, network calls, fixed ports and paths |
 
-The local commands run your project's interpreter (auto-detecting `.venv`/`venv`; `--python` to override)
-and switch off plugins that hide flakiness while measuring (pytest-randomly's own ordering, rerunfailures,
-xdist). They never modify your files.
+> [!IMPORTANT]
+> The local commands run *your project's* interpreter (auto-detecting `.venv`/`venv`, or `--python`), switch
+> off plugins that hide flakiness while measuring (pytest-randomly's ordering, rerunfailures, xdist), and never
+> modify your files.
 
-## Claude Code plugin
+[`causes.md`](plugins/flake-doctor/skills/flake-doctor/references/causes.md) is a practical guide to each kind of
+flakiness, the right fix, and the "fixes" that only hide it.
 
-```
-/plugin marketplace add ChiragPatankar/flake-doctor
-/plugin install flake-doctor@flake-doctor
-```
+## ❓ FAQ
 
-Then ask Claude things like *"CI keeps going red, which tests are flaky?"* or *"test_checkout fails on CI
-but never locally, fix it."* The skill scans the CI history, measures before touching code, finds the
-mechanism (with a deterministic reproduction where possible), fixes the cause rather than adding
-retries, and verifies with enough reruns to make "it passed" mean something.
-[`references/causes.md`](plugins/flake-doctor/skills/flake-doctor/references/causes.md) is a practical
-guide to the causes and correct fixes, and worth reading on its own.
+<details>
+<summary><b>Do I need a token? What can it access?</b></summary>
+<br>
 
-## How detection works, and its limits
+GitHub requires authentication to download job logs, even for public repos. Read access to the repository's
+Actions is enough; Issues write is only needed for `--issue`. Without a token, `scan` still lists the *jobs*
+that failed and then passed on the same commit, which needs no logs.
 
-- **Evidence, not guesses.** "Flaky" needs a same-commit pass after a failure, or a pytest-rerunfailures
-  retry. Everything else is at most "suspect". Job identity is workflow name + job name (including the
-  matrix values) + commit SHA.
-- **pytest only, GitHub Actions only (for now).** Test names come from pytest's `FAILED`/`ERROR` summary
-  lines (on by default), xdist progress lines, or `-v` output. Retries are attributed to tests from
-  `RERUN` lines, which need `-v` or `-rR`.
-- **Logs expire.** GitHub keeps job logs for 90 days by default; older failures are counted as
-  "logs unavailable".
-- **Projects that never re-run** produce fewer same-commit flips. Push and pull-request runs of the
-  same commit still count, and suspects still surface.
-- **API use.** One request per 100 runs, one per failed or re-run run, and one per job log read.
-  Big test matrices can fail dozens of jobs at once, so logs are budgeted (`--max-logs`): jobs with a
-  same-commit pass first, then at most two matrix siblings per run, newest first.
+</details>
 
-**Privacy:** flake-doctor only reads (except `--issue`, which writes one issue). Your token is sent only
-to the GitHub API, never to the log storage host GitHub redirects to, and logs are cached locally.
+<details>
+<summary><b>Is my code or data sent anywhere?</b></summary>
+<br>
 
-## Results on real projects
+No. flake-doctor only talks to the GitHub API, and only reads (except `--issue`, which writes one issue).
+Your token is never forwarded to the storage host GitHub redirects log downloads to, and logs are cached
+locally in `~/.cache/flake-doctor`.
 
-30 days of GitHub Actions history (19 Sep to 19 Oct 2026), default settings:
+</details>
 
-| Project | Runs scanned | Failed jobs | Flaky tests found | What they were |
-|---------|-------------:|------------:|------------------:|----------------|
-| [pydantic](https://github.com/pydantic/pydantic) | 1,241 | 1,144 | **7** | 4 date tests that fail whenever CI runs across midnight UTC, plus 3 in third-party integration suites it runs |
-| [aiohttp](https://github.com/aio-libs/aiohttp) | 4,180 (25 days) | 610 | **7** | keep-alive and read timeouts hitting connection resets, a WebSocket heartbeat test, a timing assertion |
-| [fastapi](https://github.com/fastapi/fastapi) | 3,119 | 257 | 0 | correctly *not* flagged: 29 tests failing across 12 branches were a dependency breakage (an anyio deprecation), during which the workflow passed only 13% of runs |
-| [pandas](https://github.com/pandas-dev/pandas) | 2,836 (7 days) | 500 | 0 | the 7 jobs that passed on retry failed for infrastructure reasons (HTTP 500s, a pip build error, a collection error) |
+<details>
+<summary><b>Which test frameworks and CI systems are supported?</b></summary>
+<br>
 
-**The pydantic one is a classic.** In `tests/test_datetime.py`, `date.today()` is evaluated inside
-`@pytest.mark.parametrize`, i.e. when tests are *collected*. A macOS job collected on 10 October and ran its
-tests after midnight UTC, so "today" had become yesterday and `PastDate` accepted it:
-`Failed: DID NOT RAISE ValidationError`. The re-run passed 50 minutes later. It's the kind of failure nobody
-investigates, because it only happens to someone else's job, at night.
+pytest on GitHub Actions. Test names come from pytest's `FAILED`/`ERROR` summary, xdist progress lines, `-v`
+output, pytest-pretty's failure table, or pytest's own failure sections, so it works whatever summary plugin you
+use. Retries are attributed to tests from `RERUN` lines (needs `-v` or `-rR`). The job-level report works
+for any language.
 
-**Most red CI isn't flaky tests.** Across these projects, the large majority of failed jobs were lint, type
-checks, docs builds, bots and infrastructure. flake-doctor lists those separately ("failed jobs without
-pytest failures", and "jobs that failed and then passed on the same commit") so they don't drown the signal.
+</details>
 
-A first 30-day scan of a busy repository takes a few minutes and roughly 1,000 API requests (mostly log
-downloads); repeat scans reuse the cache and take 20 to 90.
+<details>
+<summary><b>My project never re-runs jobs. Will it find anything?</b></summary>
+<br>
 
-## Benchmarks
+Fewer confirmed flakes, yes. Push and pull-request runs of the same commit still count as a same-commit pass,
+and "suspects" still surface. Logs expire after 90 days by default, so very old failures can't be attributed.
 
-`evals/` contains the skill benchmark: realistic requests run by Claude with and without the skill
-against [`examples/flaky-zoo`](examples/flaky-zoo) and the harder [`examples/warehouse`](examples/warehouse),
-graded by scripts that rerun each fixed test 60–200 times and check the product code directly.
+</details>
 
-The honest result: on small, readable codebases a strong model fixes these flakes without the skill too.
-The skill made verification more rigorous (fixes checked with 50+ reruns: 3/3 with the skill vs 1/3
-without on the first set), but the outcome-changing piece is **finding** the flaky tests in the first
-place, which needs CI history that no model can see by reading code. That's why `scan` is the core of
-this project.
+<details>
+<summary><b>Why not just add retries?</b></summary>
+<br>
 
-## Roadmap
+Retries make the symptom rarer and leave the cause in place. Sometimes the cause is a real bug: the pydantic
+test above is fine, but the warehouse example's polluter would charge real customers the wrong price.
+flake-doctor helps you find the cause and prove it's fixed.
 
-- JUnit XML artifacts as an alternative to log parsing
-- Jest/Vitest and Go test output
-- GitLab CI
-- Optional PR comments when a PR's failure matches a known flaky test
+</details>
 
-## Contributing
+<details>
+<summary><b>How much does a scan cost in API requests?</b></summary>
+<br>
 
-Issues and PRs welcome, especially log excerpts that the parser gets wrong. See [CONTRIBUTING.md](CONTRIBUTING.md).
+About one request per 100 runs, one per failed or re-run run, and one per job log read. Big test matrices can
+fail dozens of jobs at once, so logs are budgeted (`--max-logs`): jobs with a same-commit pass first, then at
+most two matrix siblings per run, newest first.
+
+</details>
+
+<details>
+<summary><b>Does the Claude Code skill actually help? (benchmarks)</b></summary>
+<br>
+
+`evals/` holds the benchmark: realistic requests run by Claude with and without the skill against
+[`examples/flaky-zoo`](examples/flaky-zoo) and the harder [`examples/warehouse`](examples/warehouse), graded by
+scripts that rerun each fixed test 60 to 200 times and check the product code directly.
+
+The honest result: on small, readable codebases a strong model fixes these flakes without the skill too. The
+skill made verification more rigorous (fixes checked with 50+ reruns: 3/3 with the skill vs 1/3 without), but
+the outcome-changing part is **finding** flaky tests in the first place, which needs CI history no model can
+see by reading code. That's why `scan` is the core of this project.
+
+</details>
+
+## 🗺️ Roadmap
+
+- [ ] PyPI release
+- [ ] JUnit XML artifacts as an alternative to log parsing
+- [ ] Jest/Vitest and Go test output
+- [ ] GitLab CI
+- [ ] PR comments when a failure matches a known flaky test
+
+## 🤝 Contributing
+
+Issues and PRs welcome, especially CI log excerpts the parser gets wrong. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
