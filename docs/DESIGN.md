@@ -108,14 +108,15 @@ silently.
 | **suspect** | failed on ≥3 commits across ≥2 branches **and** the workflow passed ≥50% of ≥5 runs within ±12 h of the failures | intermittent failures surrounded by green CI |
 | **failing** (hidden) | everything else | probably a real bug (one branch) or a breakage (everything red) |
 
-The pass-rate condition was added after fastapi. 29 tests failed on 20 commits across 12 branches with an
-anyio `DeprecationWarning`, which the first suspect rule flagged. Measuring the workflow's pass rate around
+The pass-rate condition was added after fastapi, where the first suspect rule flagged 6 tests. Four of them
+failed on 20 commits across 12 branches with the same anyio `DeprecationWarning`; the other two timed out on 4
+commits across 2 branches. Measuring the workflow's pass rate around
 each test's failures separated the cases cleanly:
 
 | | workflow pass rate around the failures |
 |---|---|
 | aiohttp's confirmed flaky tests | 68% to 86% |
-| fastapi's "suspects" (dependency breakage) | 13% |
+| fastapi's "suspects" | 13% (the anyio four) and 33% (the two timeouts) |
 
 A flaky test fails *occasionally* while CI is otherwise green; a breakage fails *everything* until it's fixed.
 

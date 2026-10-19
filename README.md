@@ -130,9 +130,9 @@ flowchart LR
 | ⚪ **hidden** | anything else: failures on one branch (probably a real bug), failures while CI was red everywhere (a breakage, e.g. a new dependency release), and failed jobs with no pytest failures at all |
 
 > [!NOTE]
-> That last rule matters. On fastapi, 29 tests failed on 12 branches, which looks flaky at first glance. But the
-> workflow passed only 13% of runs in that window: a dependency release had broken everything. flake-doctor
-> keeps those out of the flaky list.
+> That last rule matters. On fastapi, 4 tests failed on 20 commits across 12 branches, which looks flaky at first
+> glance. But the workflow passed only 13% of runs around those failures: a dependency release had broken
+> everything. flake-doctor keeps those out of the flaky list.
 
 ## 📊 Results on real projects
 
@@ -142,7 +142,7 @@ flowchart LR
 |---------|-------------:|------------:|------------:|----------------|
 | [pydantic](https://github.com/pydantic/pydantic) | 1,241 | 1,144 | **7** | 4 date tests that fail whenever CI runs across midnight UTC, plus 3 in third-party suites it runs |
 | [aiohttp](https://github.com/aio-libs/aiohttp) | 4,180 <sub>(25 days)</sub> | 610 | **7** | keep-alive and read timeouts hitting connection resets, a WebSocket heartbeat test, a timing assertion |
-| [fastapi](https://github.com/fastapi/fastapi) | 3,119 | 257 | 0 | correctly *not* flagged: 29 "everywhere" failures were a dependency breakage |
+| [fastapi](https://github.com/fastapi/fastapi) | 3,119 | 257 | 0 | correctly *not* flagged: 6 tests failing on many branches were a dependency breakage and a red-CI period |
 | [pandas](https://github.com/pandas-dev/pandas) | 2,836 <sub>(7 days)</sub> | 500 | 0 | the jobs that passed on retry failed for infrastructure reasons (HTTP 500s, build errors) |
 
 <details>

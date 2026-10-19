@@ -79,7 +79,7 @@ someone else's job, late at night, and re-running fixes it.
 ### fastapi: the false positive I almost shipped
 
 My first version also had a softer category, "suspect", for tests that fail on several commits across several
-branches. On fastapi it flagged 29 tests that failed on 20 commits across 12 branches, all with
+branches. On fastapi it flagged 6. Four of them failed on 20 commits across 12 branches, all with
 `DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated`.
 
 That isn't flakiness. A new anyio release broke every branch at once until fastapi adapted. To tell the two
@@ -88,7 +88,7 @@ apart, I measured how often the *workflow* passed around each test's failures:
 | | workflow pass rate around the failures |
 |---|---|
 | aiohttp's confirmed flaky tests | 68% to 86% |
-| fastapi's "suspects" | 13% |
+| fastapi's "suspects" | 13% (the anyio four), 33% (two timeouts) |
 
 A flaky test fails *occasionally while CI is otherwise green*. A breakage turns *everything* red. So now a
 test is only a suspect if its workflow kept passing most of its other runs. Otherwise it's treated as a
