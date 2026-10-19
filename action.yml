@@ -64,7 +64,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         args=(scan "$GITHUB_REPOSITORY" --days "${{ inputs.days }}" --max-runs "${{ inputs.max-runs }}"
-              --format json --output flake-doctor-report.json)
+              --json-output flake-doctor-report.json)
         [ -n "${{ inputs.workflow }}" ] && args+=(--workflow "${{ inputs.workflow }}")
         [ -n "${{ inputs.branch }}" ] && args+=(--branch "${{ inputs.branch }}")
         [ "${{ inputs.scan-passing }}" = "true" ] && args+=(--scan-passing)

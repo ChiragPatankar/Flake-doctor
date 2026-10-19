@@ -196,7 +196,7 @@ def test_reports_render():
     assert "**2 flaky tests** found" in md
     assert "`tests/test_cache.py::test_expiry` | flaky | passed on the same commit after failing 2x" in md
     assert "test_rate" not in md.split("### Notes")[0]          # real failure hidden from the table
-    assert "1 test failed only on a single branch" in md
+    assert "1 test failed without evidence of flakiness" in md
     assert "flake-doctor run 'tests/test_cache.py::test_expiry'" in md
     assert "test_rate" in to_markdown(reports, info, extra, show_all=True).split("### Notes")[0]
 
@@ -254,3 +254,23 @@ def test_run_listing_splits_windows_over_the_api_cap():
     got = _runs_in_window(CappedApi(), "/runs", {}, start, start + timedelta(days=20), limit=5000)
     assert len(got) == 2500 and len({r["id"] for r in got}) == 2500
     assert _runs_in_window(CappedApi(), "/runs", {}, start, start + timedelta(days=20), limit=300)[0]["id"] == 2499
+
+
+def test_suspects_need_the_workflow_to_keep_passing():
+    """A test failing on many branches while CI is red everywhere is a breakage (e.g. a new dependency
+    release), not a flake; while CI mostly passes, it's a suspect."""
+    gh = scenario()
+    jobs, info = collect(gh, REPO, quiet=True)
+    around = "2026-10-10T09:00:00Z"
+    mostly_green = [(WF, around, "success")] * 8 + [(WF, around, "failure")] * 2
+    mostly_red = [(WF, around, "success")] * 1 + [(WF, around, "failure")] * 9
+    too_few = [(WF, around, "success")] * 3
+
+    tests = by_test(analyze(jobs, mostly_green)[0])
+    assert tests["tests/test_ws.py::test_reconnect"].verdict == "suspect"
+    assert "the workflow passed 80% of runs meanwhile" in tests["tests/test_ws.py::test_reconnect"].evidence()
+    assert by_test(analyze(jobs, mostly_red)[0])["tests/test_ws.py::test_reconnect"].verdict == "failing"
+    assert by_test(analyze(jobs, too_few)[0])["tests/test_ws.py::test_reconnect"].verdict == "failing"
+    # confirmed flakes don't depend on the workflow's pass rate
+    assert by_test(analyze(jobs, mostly_red)[0])["tests/test_cache.py::test_expiry"].verdict == "flaky"
+    assert "_run_outcomes" not in json.loads(to_json([], info, {}))["scan"]

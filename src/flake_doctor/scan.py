@@ -111,7 +111,7 @@ def _prioritise_logs(candidates, passed_keys, max_logs, per_group=2):
     return chosen
 
 
-def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=500, scan_passing=False, quiet=False,
+def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=5000, scan_passing=False, quiet=False,
             max_logs=400):
     """Fetch runs, jobs and failed-job logs. Returns (jobs, info)."""
     end = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=1)
@@ -198,6 +198,8 @@ def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=500, scan_pa
         "logs_skipped_by_budget": skipped_logs if getattr(gh, "token", True) else 0,
         "branch_filter": branch,
         "api_requests": gh.requests,
+        # workflow, created_at, conclusion of every run: used to tell intermittent failures from breakages
+        "_run_outcomes": [((r.get("name") or r.get("path") or ""), r["created_at"], r["conclusion"]) for r in runs],
     }
     return jobs, info
 
@@ -213,6 +215,7 @@ class TestReport:
         self.rerun_jobs = []
         self.verdict = None
         self.minutes = 0.0
+        self.workflow_pass_rate = None    # share of the workflow's runs that passed around the failures
 
     @property
     def shas(self):
@@ -247,6 +250,8 @@ class TestReport:
             parts.append("retried by pytest-rerunfailures %dx" % self.reruns)
         if not parts:
             parts.append("failed on %d commits across %d branches" % (len(self.shas), len(self.branches)))
+            if self.workflow_pass_rate is not None:
+                parts.append("the workflow passed %.0f%% of runs meanwhile" % (100 * self.workflow_pass_rate))
         return "; ".join(parts)
 
     def to_dict(self):
@@ -261,13 +266,36 @@ class TestReport:
             "branches": sorted(self.branches),
             "ci_minutes": round(self.minutes, 1),
             "last_seen": self.last_seen,
+            "workflow_pass_rate": None if self.workflow_pass_rate is None else round(self.workflow_pass_rate, 2),
             "messages": self.messages[:5],
             "failed_jobs": [j.url for j, _ in self.failures][:10],
         }
 
 
-def analyze(jobs):
-    """Group failures by test and decide which are flaky. Returns (reports, extra)."""
+SUSPECT_MIN_RUNS = 5           # runs of the workflow around the failures needed to judge intermittency
+SUSPECT_MIN_PASS_RATE = 0.5    # below this the workflow was mostly red: a breakage, not a flake
+SUSPECT_WINDOW = timedelta(hours=12)
+
+
+def _pass_rate_around(report, run_outcomes):
+    """Share of the failing workflow(s)' runs that passed within SUSPECT_WINDOW of the test's failures."""
+    workflows = {j.workflow for j, _ in report.failures}
+    times = sorted(_ts(j.created_at) for j, _ in report.failures if j.created_at)
+    if not times:
+        return None, 0
+    lo, hi = times[0] - SUSPECT_WINDOW, times[-1] + SUSPECT_WINDOW
+    span = [c for w, t, c in run_outcomes if w in workflows and lo <= _ts(t) <= hi]
+    if not span:
+        return None, 0
+    return sum(c == "success" for c in span) / len(span), len(span)
+
+
+def analyze(jobs, run_outcomes=None):
+    """Group failures by test and decide which are flaky. Returns (reports, extra).
+
+    run_outcomes: (workflow, created_at, conclusion) for every scanned run; when given, tests that
+    failed widely while their workflow was mostly failing anyway are treated as breakages, not suspects.
+    """
     passed = {j.key for j in jobs if j.conclusion == "success"}
     tests = {}
 
@@ -313,6 +341,11 @@ def analyze(jobs):
             r.verdict = "flaky"
         elif len(r.shas) >= 3 and len(r.branches) >= 2:
             r.verdict = "suspect"
+            if run_outcomes is not None:
+                rate, n = _pass_rate_around(r, run_outcomes)
+                r.workflow_pass_rate = rate
+                if n < SUSPECT_MIN_RUNS or rate is None or rate < SUSPECT_MIN_PASS_RATE:
+                    r.verdict = "failing"
         else:
             r.verdict = "failing"
     ordered = sorted(tests.values(), key=lambda r: ({"flaky": 0, "suspect": 1, "failing": 2}[r.verdict], -r.score, -r.minutes))

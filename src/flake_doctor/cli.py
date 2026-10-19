@@ -48,6 +48,8 @@ def scan_main(argv):
                              "(more API requests)")
     parser.add_argument("--format", choices=["text", "markdown", "json"], default="text")
     parser.add_argument("--output", "-o", help="write the report to this file instead of stdout")
+    parser.add_argument("--json-output", metavar="FILE", help="also write the JSON report to FILE")
+    parser.add_argument("--markdown-output", metavar="FILE", help="also write the Markdown report to FILE")
     parser.add_argument("--all", action="store_true", help="also list tests that look like real (non-flaky) failures")
     parser.add_argument("--issue", action="store_true", help="create or update a 'Flaky test report' issue in the repo")
     parser.add_argument("--fail-on-flaky", action="store_true", help="exit with status 1 if any flaky test is found")
@@ -67,7 +69,7 @@ def scan_main(argv):
         jobs, info = collect(gh, repo, days=args.days, workflow=args.workflow, branch=args.branch,
                              max_runs=args.max_runs, scan_passing=args.scan_passing, quiet=args.quiet,
                              max_logs=args.max_logs)
-        reports, extra = analyze(jobs)
+        reports, extra = analyze(jobs, info.get("_run_outcomes"))
         info["api_requests"] = gh.requests
         render = {"text": to_text, "markdown": to_markdown, "json": to_json}[args.format]
         output = render(reports, info, extra, show_all=args.all)
@@ -76,6 +78,10 @@ def scan_main(argv):
                 f.write(output)
         else:
             sys.stdout.write(output)
+        for path, extra_render in ((args.json_output, to_json), (args.markdown_output, to_markdown)):
+            if path:
+                with open(path, "w") as f:
+                    f.write(extra_render(reports, info, extra, show_all=args.all))
         summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary_path:
             with open(summary_path, "a") as f:
