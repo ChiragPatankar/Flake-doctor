@@ -45,14 +45,14 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v7
       with:
         python-version: "3.12"
     - name: Install flake-doctor
       shell: bash
       run: python -m pip install --quiet "${{ github.action_path }}"
     - name: Cache job logs between scans
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: ~/.cache/flake-doctor
         key: flake-doctor-${{ github.repository }}-${{ github.run_id }}

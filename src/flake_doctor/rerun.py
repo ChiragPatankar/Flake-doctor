@@ -136,6 +136,11 @@ def suspects(rows, target):
     # A lift of +/-1 means the outcome flips exactly with this test's position: that is the
     # culprit, and weaker correlations are just tests that tend to sit near it in the order.
     exact = [s for s in ranked if abs(s["lift"]) == 1.0]
+    if len(exact) > 1:
+        # Tests' positions are correlated through the target's own position, so a bystander can match
+        # the failures perfectly by chance. This data can't tell them apart; bisection can.
+        for s in exact:
+            s["tied"] = True
     return exact[:5] if exact else [s for s in ranked if abs(s["lift"]) >= 0.5][:5]
 
 
@@ -229,6 +234,9 @@ def main(argv=None):
             print("  avg duration: passing %.3fs, failing %.3fs" % (s["avg_duration_passed"], s["avg_duration_failed"]))
         if s.get("suspects"):
             print("  tests that change the outcome when they run before it:")
+            if any(sp.get("tied") for sp in s["suspects"]):
+                print("    (tied: each of these matches the failures perfectly, so this data can't tell them apart;"
+                      " `flake-doctor polluter` will)")
             for sp in s["suspects"]:
                 print("    %+.2f  %s  (failed %s when before, %s when after)"
                       % (sp["lift"], sp["test"], sp["failed_when_before"], sp["failed_when_after"]))

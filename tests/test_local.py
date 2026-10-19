@@ -37,7 +37,11 @@ def test_order_dependent_flake_and_polluter(tmp_path):
     summary = json.dumps({k: data[k] for k in ("verdict", "isolated", "shuffle")}, indent=1)[:3000]
     assert data["verdict"] == "ORDER-DEPENDENT", summary
     assert data["isolated"]["failed"] == 0, summary
-    assert data["shuffle"]["suspects"][0]["test"] == "tests/test_admin.py::test_switch_store_to_euro", summary
+    # The polluter always separates failures perfectly. A bystander can tie with it by chance (their
+    # positions are correlated through the victim's), in which case all tied tests are flagged as such.
+    perfect = [s for s in data["shuffle"]["suspects"] if s["lift"] == 1.0]
+    assert "tests/test_admin.py::test_switch_store_to_euro" in [s["test"] for s in perfect], summary
+    assert all(s.get("tied") for s in perfect) == (len(perfect) > 1), summary
 
     seed = data["shuffle"]["failing_seeds"][0]
     code, stdout, stderr = cli("polluter", target, "--seed", str(seed), "--scope", "tests", "--python", sys.executable)
@@ -68,3 +72,17 @@ def test_hints_point_at_the_causes():
 def test_cli_help(args):
     code, stdout, _ = cli(*args)
     assert code == 0 and stdout
+
+
+def test_tied_suspects_are_flagged():
+    from flake_doctor.rerun import suspects
+    target = "t::victim"
+    rows = []
+    # polluter P and bystander B always sit on the same side of the victim; C varies independently
+    for i, (before_pb, c_before) in enumerate([(1, 0), (1, 1), (0, 0), (0, 1), (1, 0), (0, 1)]):
+        before = (["t::P", "t::B"] if before_pb else []) + (["t::C"] if c_before else [])
+        order = before + [target] + [x for x in ("t::P", "t::B", "t::C") if x not in before]
+        rows.append({"order": order, "before": before, "outcome": "failed" if before_pb else "passed"})
+    found = suspects(rows, target)
+    assert {s["test"] for s in found} == {"t::P", "t::B"}
+    assert all(s.get("tied") for s in found)
