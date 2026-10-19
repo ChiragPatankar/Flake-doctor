@@ -95,3 +95,74 @@ Downloading FAILED_builds.txt
 echo "FAILED to connect"
 """)
     assert parse_log(log).failing == {}
+
+
+def test_pytest_pretty_summary_table():
+    log = gha("""
+                                                    Summary of Failures
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┓
+┃  File                        ┃  Function                             ┃  Function Line  ┃  Error Line  ┃  Error           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
+│  tests/test_type_adapter.py  │  test_ta_config_used_for_json_schema  │  558            │  561         │  AssertionError  │
+│  tests/test_models.py        │  TestCopy.test_deep                   │  10             │  12          │  KeyError        │
+└──────────────────────────────┴───────────────────────────────────────┴─────────────────┴──────────────┴──────────────────┘
+Results (83.02s):
+         2 failed
+""")
+    result = parse_log(log)
+    assert result.failed == {
+        "tests/test_type_adapter.py::test_ta_config_used_for_json_schema": "AssertionError",
+        "tests/test_models.py::TestCopy::test_deep": "KeyError",
+    }
+
+
+def test_failure_sections_when_summary_is_disabled():
+    log = gha("""
+collected 3 items
+=================================== FAILURES ===================================
+__________________________ TestCart.test_total[eur] ___________________________
+
+    def test_total(self):
+>       assert total() == 3
+E       assert 2 == 3
+
+tests/test_cart.py:42: AssertionError
+_________________________________ test_fetch __________________________________
+tests/test_net.py:7: TimeoutError
+==================================== ERRORS ====================================
+____________________ ERROR at setup of test_db_migrations _____________________
+tests/test_db.py:3: OperationalError
+____________________ ERROR collecting tests/test_broken.py _____________________
+tests/test_broken.py:1: SyntaxError
+========================= 2 failed, 1 error in 1.20s ==========================
+""")
+    result = parse_log(log)
+    assert result.failed == {"tests/test_cart.py::TestCart::test_total[eur]": "AssertionError",
+                             "tests/test_net.py::test_fetch": "TimeoutError"}
+    assert result.errors == {"tests/test_db.py::test_db_migrations": "OperationalError"}
+
+
+def test_summary_wins_over_sections():
+    log = gha("""
+=================================== FAILURES ===================================
+_________________________________ test_fetch __________________________________
+tests/test_net.py:7: TimeoutError
+=========================== short test summary info ============================
+FAILED tests/test_net.py::test_fetch - TimeoutError: read timed out
+========================= 1 failed in 1.20s ==========================
+""")
+    assert parse_log(log).failed == {"tests/test_net.py::test_fetch": "TimeoutError: read timed out"}
+
+
+def test_failure_sections_with_short_tracebacks():
+    log = gha("""
+=================================== FAILURES ===================================
+__________________________________ test_total __________________________________
+tests/test_cart.py:42: in test_total
+    assert total() == 3
+src/cart.py:9: in total
+    raise ValueError("x")
+E   ValueError: x
+========================= 1 failed in 1.20s ==========================
+""")
+    assert parse_log(log).failed == {"tests/test_cart.py::test_total": ""}

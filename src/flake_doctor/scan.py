@@ -124,8 +124,10 @@ def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=500, scan_pa
             _progress(".", quiet)
     _progress("\n", quiet)
 
-    failing_shas = {j.sha for j in jobs if j.conclusion == "failure"}
-    second_pass = [r for r in runs if r["id"] not in done and (scan_passing or r["head_sha"] in failing_shas)]
+    # A pass only proves flakiness for the same workflow on the same commit, so skip other workflows.
+    failing = {(j.workflow, j.sha) for j in jobs if j.conclusion == "failure"}
+    second_pass = [r for r in runs if r["id"] not in done
+                   and (scan_passing or ((r.get("name") or r.get("path") or ""), r["head_sha"]) in failing)]
     if second_pass:
         _progress("fetching jobs for %d passing runs%s" % (
             len(second_pass), "" if scan_passing else " on the same commits"), quiet)
