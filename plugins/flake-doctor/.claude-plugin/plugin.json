@@ -1,0 +1,13 @@
+{
+  "name": "flake-doctor",
+  "version": "0.1.0",
+  "description": "Diagnose and fix flaky pytest tests with evidence: measure the failure rate, find the root cause or polluting test, fix the cause instead of adding retries, and prove it with clean reruns.",
+  "author": {
+    "name": "Chirag Patankar",
+    "url": "https://github.com/ChiragPatankar"
+  },
+  "homepage": "https://github.com/ChiragPatankar/flake-doctor",
+  "repository": "https://github.com/ChiragPatankar/flake-doctor",
+  "license": "MIT",
+  "keywords": ["flaky-tests", "pytest", "testing", "ci", "python", "debugging"]
+}

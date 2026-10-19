@@ -1,0 +1,85 @@
+name: "flake-doctor: flaky test report"
+description: "Find flaky pytest tests in this repo's GitHub Actions history and keep a 'Flaky test report' issue up to date."
+author: "Chirag Patankar"
+branding:
+  icon: "activity"
+  color: "orange"
+
+inputs:
+  days:
+    description: "How many days of CI history to scan."
+    default: "30"
+  workflow:
+    description: "Only scan workflows whose name or file contains this text (default: all)."
+    default: ""
+  branch:
+    description: "Only scan runs on this branch (default: all branches)."
+    default: ""
+  max-runs:
+    description: "Cap on workflow runs to scan."
+    default: "1000"
+  scan-passing:
+    description: "Also read passing job logs to catch tests retried by pytest-rerunfailures (more API calls)."
+    default: "false"
+  create-issue:
+    description: "Create or update a 'Flaky test report' issue (needs `issues: write`)."
+    default: "true"
+  fail-on-flaky:
+    description: "Fail this step if any flaky test is found."
+    default: "false"
+  token:
+    description: "Token used to read Actions history (needs `actions: read`)."
+    default: ${{ github.token }}
+
+outputs:
+  flaky-count:
+    description: "Number of confirmed flaky tests."
+    value: ${{ steps.scan.outputs.flaky-count }}
+  suspect-count:
+    description: "Number of suspect tests (failing on several branches, not proven flaky)."
+    value: ${{ steps.scan.outputs.suspect-count }}
+  report:
+    description: "Path to the JSON report."
+    value: ${{ steps.scan.outputs.report }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install flake-doctor
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}"
+    - name: Cache job logs between scans
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/flake-doctor
+        key: flake-doctor-${{ github.repository }}-${{ github.run_id }}
+        restore-keys: flake-doctor-${{ github.repository }}-
+    - name: Scan CI history
+      id: scan
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        args=(scan "$GITHUB_REPOSITORY" --days "${{ inputs.days }}" --max-runs "${{ inputs.max-runs }}"
+              --format json --output flake-doctor-report.json)
+        [ -n "${{ inputs.workflow }}" ] && args+=(--workflow "${{ inputs.workflow }}")
+        [ -n "${{ inputs.branch }}" ] && args+=(--branch "${{ inputs.branch }}")
+        [ "${{ inputs.scan-passing }}" = "true" ] && args+=(--scan-passing)
+        [ "${{ inputs.create-issue }}" = "true" ] && args+=(--issue)
+        flake-doctor "${args[@]}"
+        python - <<'PY' >> "$GITHUB_OUTPUT"
+        import json
+        tests = json.load(open("flake-doctor-report.json"))["tests"]
+        print("flaky-count=%d" % sum(t["verdict"] == "flaky" for t in tests))
+        print("suspect-count=%d" % sum(t["verdict"] == "suspect" for t in tests))
+        print("report=flake-doctor-report.json")
+        PY
+    - name: Fail on flaky tests
+      if: inputs.fail-on-flaky == 'true' && steps.scan.outputs.flaky-count != '0'
+      shell: bash
+      run: |
+        echo "::error::flake-doctor found ${{ steps.scan.outputs.flaky-count }} flaky test(s); see the job summary."
+        exit 1

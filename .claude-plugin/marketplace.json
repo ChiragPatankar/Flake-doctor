@@ -1,0 +1,15 @@
+{
+  "name": "flake-doctor",
+  "description": "flake-doctor: diagnose and fix flaky pytest tests",
+  "owner": {
+    "name": "Chirag Patankar",
+    "url": "https://github.com/ChiragPatankar"
+  },
+  "plugins": [
+    {
+      "name": "flake-doctor",
+      "source": "./plugins/flake-doctor",
+      "description": "Diagnose and fix flaky pytest tests with evidence, not retries."
+    }
+  ]
+}

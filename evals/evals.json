@@ -1,0 +1,81 @@
+{
+  "skill_name": "flake-doctor",
+  "evals": [
+    {
+      "id": 1,
+      "name": "clock-boundary",
+      "prompt": "tests/test_reports.py::test_report_timestamp fails maybe once every few CI runs but i can never get it to fail locally. can you figure out whats going on and fix it",
+      "expected_output": "Measures the flake (~15%), identifies that the report timestamp is taken before a slow load and compared with a second datetime.now() so it fails when a second boundary is crossed, fixes by freezing/injecting the clock or asserting a before/after range, and verifies with many clean reruns.",
+      "files": [
+        "examples/flaky-zoo"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "order-dependent-polluter",
+      "prompt": "our CI keeps failing on tests/test_pricing.py::test_default_currency but when I run test_pricing.py by itself it passes every time. what's breaking it? please fix it properly, not a hack",
+      "expected_output": "Shows it passes alone and fails in some suite orders, identifies tests/test_admin.py::test_switch_store_to_euro as the polluter (sets settings.currency without restoring), fixes the polluter with monkeypatch (or equivalent cleanup), and verifies with shuffled suite runs.",
+      "files": [
+        "examples/flaky-zoo"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "random-exposes-product-bug",
+      "prompt": "test_codes_are_unique in tests/test_coupons.py is flaky, fails like 1 in 5 runs. honestly I'm tempted to just slap @pytest.mark.flaky(reruns=3) on it and move on. can you sort it out?",
+      "expected_output": "Explains that the flake is a real bug: generate_codes can return duplicate codes (4-letter alphabet, length 2, no collision check). Fixes generate_codes to guarantee distinct codes (and handle impossible requests), does not add retries or seed the test, and verifies.",
+      "files": [
+        "examples/flaky-zoo"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "not-actually-flaky",
+      "prompt": "tests/test_cart.py::test_cart_total failed once on CI yesterday and then passed when we re-ran the job. can you fix the flakiness in it?",
+      "expected_output": "Tries hard to reproduce (many isolated + shuffled runs, stress), finds no failures, explains what the numbers rule out and what to collect next time (CI log, env), and makes no code changes.",
+      "files": [
+        "examples/flaky-zoo"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "buried-cache-polluter",
+      "difficulty": "hard",
+      "prompt": "CI runs our suite with pytest-randomly and tests/test_checkout.py::test_order_total[standard] fails maybe every other run. running plain `pytest` locally it always passes. there are ~180 tests so idk where to even start. can you find whats causing it and fix it",
+      "expected_output": "Shows it is order-dependent, finds test_promotions.py::test_flash_sale_price[WID-100S-20] as the polluter among ~180 tests, identifies that flash_sale_price mutates the lru_cached catalog dict (a product bug), fixes the product code so prices aren't mutated, and verifies with shuffled runs.",
+      "files": [
+        "examples/warehouse"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "rare-float-set-order",
+      "difficulty": "hard",
+      "prompt": "tests/test_invoices.py::test_invoice_total has failed maybe 3 or 4 times on CI in the last couple of months. nobody has ever reproduced it locally. worth looking into?",
+      "expected_output": "Reproduces the rare (~9%) failure with many reruns, explains that summing floats in set() iteration order (per-process hash randomisation) changes the last bits, fixes invoice_total to be deterministic and exact to the cent (sorted order and/or Decimal/rounding), verifies with ~200 clean runs.",
+      "files": [
+        "examples/warehouse"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "load-only-timing",
+      "difficulty": "hard",
+      "prompt": "tests/test_ratelimit.py::test_blocks_fourth_call fails on CI every now and then (our runners are pretty overloaded tbh). never fails on my machine. can you fix it?",
+      "expected_output": "Reproduces it under CPU load (rare when idle), explains that ~5ms of signing per call against a 20ms real-time window races on slow machines, fixes deterministically (inject/fake the clock) rather than just widening the window, verifies under load.",
+      "files": [
+        "examples/warehouse"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "import-side-effect",
+      "difficulty": "hard",
+      "prompt": "tests/test_refunds.py::test_refund_card_order passes when we run the whole suite but we just started sharding CI across 4 machines and it fails on some shards. please fix",
+      "expected_output": "Finds it fails whenever run without test_payments_card.py (import-time provider registration), recognises the product bug (refund_order can't find the card provider in production), fixes registration in product code, verifies it passes alone and in the suite.",
+      "files": [
+        "examples/warehouse"
+      ]
+    }
+  ]
+}
