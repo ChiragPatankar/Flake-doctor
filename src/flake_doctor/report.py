@@ -53,12 +53,12 @@ def to_markdown(reports, info, extra, show_all=False):
 
     rows = flaky + suspect + (failing if show_all else [])
     if rows:
-        out.append("| # | Test | Verdict | Evidence | Failures | Commits | CI min | Last seen |")
-        out.append("|---|------|---------|----------|---------:|--------:|-------:|-----------|")
+        out.append("| # | Test | Workflow | Verdict | Evidence | Failures | Commits | CI min | Last seen |")
+        out.append("|---|------|----------|---------|----------|---------:|--------:|-------:|-----------|")
         for i, r in enumerate(rows, 1):
-            out.append("| %d | `%s` | %s | %s | %d | %d | %.0f | %s |" % (
-                i, _md_escape(_short(r.nodeid)), r.verdict, _md_escape(r.evidence()), len(r.failures),
-                len(r.shas), r.minutes, _date(r.last_seen)))
+            out.append("| %d | `%s` | %s | %s | %s | %d | %d | %.0f | %s |" % (
+                i, _md_escape(_short(r.nodeid)), _md_escape(", ".join(r.workflows)), r.verdict,
+                _md_escape(r.evidence()), len(r.failures), len(r.shas), r.minutes, _date(r.last_seen)))
         out.append("")
         out.append("<details><summary>Failure messages and links</summary>")
         out.append("")
@@ -126,7 +126,8 @@ def to_text(reports, info, extra, show_all=False):
     rows = flaky + suspect + (failing if show_all else [])
     for r in rows:
         lines.append("[%s] %s" % (r.verdict.upper(), r.nodeid))
-        lines.append("    %s; %d failures, %.0f CI min, last %s" % (r.evidence(), len(r.failures), r.minutes, _date(r.last_seen)))
+        lines.append("    %s; %d failures, %.0f CI min, last %s; workflow: %s" % (
+            r.evidence(), len(r.failures), r.minutes, _date(r.last_seen), ", ".join(r.workflows)))
         if r.messages:
             lines.append("    %s" % r.messages[0][:160])
     if not rows:

@@ -20,6 +20,20 @@ class GitHubError(RuntimeError):
     pass
 
 
+def decode_log(raw):
+    """UTF-8, but Windows runners sometimes emit cp1252 lines (e.g. pytest's "±"): decode those per line."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        lines = []
+        for line in raw.split(b"\n"):
+            try:
+                lines.append(line.decode("utf-8"))
+            except UnicodeDecodeError:
+                lines.append(line.decode("cp1252", errors="replace"))
+        return "\n".join(lines)
+
+
 def find_token():
     """GITHUB_TOKEN / GH_TOKEN, then `gh auth token`, then ~/.config/flake-doctor/token."""
     for var in ("GITHUB_TOKEN", "GH_TOKEN"):
@@ -134,7 +148,7 @@ class GitHub:
             same_host = urllib.parse.urlparse(location).netloc == urllib.parse.urlparse(self.api).netloc
             resp = self._open(urllib.request.Request(location, headers=self._headers(auth=same_host)))
         with resp:
-            text = resp.read().decode(errors="replace")
+            text = decode_log(resp.read())
         if cached:
             cached.parent.mkdir(parents=True, exist_ok=True)
             cached.write_text(text)

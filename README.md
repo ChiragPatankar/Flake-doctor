@@ -16,19 +16,22 @@ flake-doctor reads that history, tells you which pytest tests are flaky and what
 helps you diagnose and fix each one with evidence instead of `sleep()` and retries.
 
 ```
-$ flake-doctor scan acme/shop
-acme/shop: 812 runs, 2026-09-18 to 2026-10-18
-flaky: 3   suspect: 1   real failures (hidden): 4   failed jobs: 57
+$ flake-doctor scan aio-libs/aiohttp
+aio-libs/aiohttp: 4180 runs, 2026-09-24 to 2026-10-19
+flaky: 7   suspect: 0   real failures (hidden): 15   failed jobs: 610
 
-[FLAKY] tests/test_cache.py::test_expiry
-    passed on the same commit after failing 9x; 11 failures, 96 CI min, last 2026-10-17
-    AssertionError: assert None == 'v'
-[FLAKY] tests/integration/test_ws.py::test_reconnect
-    retried by pytest-rerunfailures 14x; 2 failures, 18 CI min, last 2026-10-16
-    ConnectionResetError: [Errno 54] Connection reset by peer
+[FLAKY] tests/test_client_functional.py::test_keepalive_timeout_async_sleep
+    passed on the same commit after failing 3x; 3 failures, 21 CI min, last 2026-09-27; workflow: CI
+    aiohttp.client_exceptions.ClientOSError: [Errno 104] Connection reset by peer
+[FLAKY] tests/test_web_websocket.py::test_receive_does_not_reset_heartbeat
+    passed on the same commit after failing 2x; 2 failures, 18 CI min, last 2026-09-24; workflow: CI
+    pytest.PytestUnraisableExceptionWarning: Exception ignored in: finalizer of : <coroutine object ...>
+[FLAKY] tests/test_helpers.py::test_when_timeout_smaller_second[pyloop]
+    passed on the same commit after failing 1x; 1 failures, 5 CI min, last 2026-09-28; workflow: CI
+    assert 0.014999999999986358 == 0 ± 0.001
 ...
 ```
-<sub>(Illustrative output; see "Results on real projects" below for real scans.)</sub>
+<sub>Real output (trimmed), from a 30-day scan in October 2026. More in [Results on real projects](#results-on-real-projects).</sub>
 
 ## What it does
 
@@ -151,7 +154,27 @@ to the GitHub API, never to the log storage host GitHub redirects to, and logs a
 
 ## Results on real projects
 
-_Coming with the first release: scans of popular open-source Python projects._
+30 days of GitHub Actions history (19 Sep to 19 Oct 2026), default settings:
+
+| Project | Runs scanned | Failed jobs | Flaky tests found | What they were |
+|---------|-------------:|------------:|------------------:|----------------|
+| [pydantic](https://github.com/pydantic/pydantic) | 1,241 | 1,144 | **7** | 4 date tests that fail whenever CI runs across midnight UTC, plus 3 in third-party integration suites it runs |
+| [aiohttp](https://github.com/aio-libs/aiohttp) | 4,180 (25 days) | 610 | **7** | keep-alive and read timeouts hitting connection resets, a WebSocket heartbeat test, a timing assertion |
+| [fastapi](https://github.com/fastapi/fastapi) | 3,119 | 257 | 0 | correctly *not* flagged: 29 tests failing across 12 branches were a dependency breakage (an anyio deprecation), during which the workflow passed only 13% of runs |
+| [pandas](https://github.com/pandas-dev/pandas) | 2,836 (7 days) | 500 | 0 | the 7 jobs that passed on retry failed for infrastructure reasons (HTTP 500s, a pip build error, a collection error) |
+
+**The pydantic one is a classic.** In `tests/test_datetime.py`, `date.today()` is evaluated inside
+`@pytest.mark.parametrize`, i.e. when tests are *collected*. A macOS job collected on 10 October and ran its
+tests after midnight UTC, so "today" had become yesterday and `PastDate` accepted it:
+`Failed: DID NOT RAISE ValidationError`. The re-run passed 50 minutes later. It's the kind of failure nobody
+investigates, because it only happens to someone else's job, at night.
+
+**Most red CI isn't flaky tests.** Across these projects, the large majority of failed jobs were lint, type
+checks, docs builds, bots and infrastructure. flake-doctor lists those separately ("failed jobs without
+pytest failures", and "jobs that failed and then passed on the same commit") so they don't drown the signal.
+
+A first 30-day scan of a busy repository takes a few minutes and roughly 1,000 API requests (mostly log
+downloads); repeat scans reuse the cache and take 20 to 90.
 
 ## Benchmarks
 

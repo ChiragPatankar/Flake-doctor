@@ -226,6 +226,10 @@ class TestReport:
         return {j.branch for j, _ in self.failures}
 
     @property
+    def workflows(self):
+        return sorted({j.workflow for j, _ in self.failures} | {j.workflow for j in self.rerun_jobs})
+
+    @property
     def last_seen(self):
         dates = [j.created_at for j, _ in self.failures] + [j.created_at for j in self.rerun_jobs]
         return max(dates) if dates else ""
@@ -264,6 +268,7 @@ class TestReport:
             "reruns": self.reruns,
             "commits": len(self.shas),
             "branches": sorted(self.branches),
+            "workflows": self.workflows,
             "ci_minutes": round(self.minutes, 1),
             "last_seen": self.last_seen,
             "workflow_pass_rate": None if self.workflow_pass_rate is None else round(self.workflow_pass_rate, 2),

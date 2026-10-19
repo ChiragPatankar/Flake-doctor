@@ -106,3 +106,9 @@ def test_find_token_prefers_env(monkeypatch, tmp_path):
     (tmp_path / "flake-doctor").mkdir()
     (tmp_path / "flake-doctor" / "token").write_text("from-file\n")
     assert find_token() == "from-file"
+
+
+def test_decode_log_handles_cp1252_lines_in_utf8_logs():
+    from flake_doctor.github import decode_log
+    raw = "│ table ┃\n".encode("utf-8") + b"assert 0.015 == 0 \xb1 0.001\n"
+    assert decode_log(raw) == "│ table ┃\nassert 0.015 == 0 ± 0.001\n"

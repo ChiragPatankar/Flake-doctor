@@ -194,7 +194,7 @@ def test_reports_render():
     reports, extra = analyze(jobs)
     md = to_markdown(reports, info, extra)
     assert "**2 flaky tests** found" in md
-    assert "`tests/test_cache.py::test_expiry` | flaky | passed on the same commit after failing 2x" in md
+    assert "`tests/test_cache.py::test_expiry` | CI | flaky | passed on the same commit after failing 2x" in md
     assert "test_rate" not in md.split("### Notes")[0]          # real failure hidden from the table
     assert "1 test failed without evidence of flakiness" in md
     assert "flake-doctor run 'tests/test_cache.py::test_expiry'" in md
