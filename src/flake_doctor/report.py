@@ -95,6 +95,9 @@ def to_markdown(reports, info, extra, show_all=False):
     if not info.get("logs_read", True):
         notes.append("Job logs weren't read because no GitHub token was found, so only job-level results are "
                      "shown. Set GITHUB_TOKEN to see which tests flaked.")
+    if info.get("hit_max_runs"):
+        notes.append("The scan stopped at --max-runs, so it covers less than the requested --days. Raise "
+                     "--max-runs or use --workflow to scan only your test workflows.")
     if info.get("logs_skipped_by_budget"):
         notes.append("%d job logs weren't read to stay within --max-logs (matrix siblings of jobs already read, "
                      "or older failures). Raise --max-logs for a fuller scan." % info["logs_skipped_by_budget"])
@@ -137,6 +140,9 @@ def to_text(reports, info, extra, show_all=False):
     if infra:
         lines.append("")
         lines.append("failed jobs without pytest failures: %s" % ", ".join("%s ×%d" % kv for kv in list(infra.items())[:5]))
+    if info.get("hit_max_runs"):
+        lines.append("")
+        lines.append("note: stopped at --max-runs before reaching --days; raise it or use --workflow.")
     lines.append("")
     lines.append("(%d GitHub API requests)" % info.get("api_requests", 0))
     return "\n".join(lines) + "\n"

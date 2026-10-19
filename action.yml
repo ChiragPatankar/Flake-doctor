@@ -17,7 +17,7 @@ inputs:
     default: ""
   max-runs:
     description: "Cap on workflow runs to scan."
-    default: "1000"
+    default: "5000"
   scan-passing:
     description: "Also read passing job logs to catch tests retried by pytest-rerunfailures (more API calls)."
     default: "false"

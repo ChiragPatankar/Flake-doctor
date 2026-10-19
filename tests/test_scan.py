@@ -34,6 +34,12 @@ class FakeGitHub:
         self.requests = 0
         self.log_requests = []
 
+    def get_json(self, path, params=None, cache=False):
+        self.requests += 1
+        runs = self.paginate(path, "workflow_runs", params)
+        self.requests -= 1
+        return {"total_count": len(runs)}
+
     def paginate(self, path, key, params=None, limit=None, cache=False):
         self.requests += 1
         if path.endswith("/actions/workflows"):
@@ -219,3 +225,32 @@ def test_log_budget_reads_proof_first_and_limits_matrix_siblings():
     _, extra = analyze(jobs_out)
     # only the 5 logs actually read count; skipped ones aren't mistaken for non-test failures
     assert sum(extra["failed_jobs_without_test_failures"].values()) == 5
+
+
+def test_run_listing_splits_windows_over_the_api_cap():
+    """GitHub caps a filtered listing at 1,000 runs; windows above that are split until they fit."""
+    from datetime import datetime, timedelta, timezone
+
+    from flake_doctor.scan import _runs_in_window
+
+    start = datetime(2026, 10, 1, tzinfo=timezone.utc)
+    all_runs = [{"id": i, "created_at": (start + timedelta(minutes=10 * i)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+                for i in range(2500)]                        # ~17 days, 2,500 runs
+
+    class CappedApi:
+        requests = 0
+
+        def _matching(self, params):
+            lo, hi = params["created"].split("..")
+            return [r for r in all_runs if lo <= r["created_at"] <= hi]
+
+        def get_json(self, path, params=None, cache=False):
+            return {"total_count": len(self._matching(params))}
+
+        def paginate(self, path, key, params=None, limit=None, cache=False):
+            found = sorted(self._matching(params), key=lambda r: r["created_at"], reverse=True)
+            return found[:min(limit or 1000, 1000)]
+
+    got = _runs_in_window(CappedApi(), "/runs", {}, start, start + timedelta(days=20), limit=5000)
+    assert len(got) == 2500 and len({r["id"] for r in got}) == 2500
+    assert _runs_in_window(CappedApi(), "/runs", {}, start, start + timedelta(days=20), limit=300)[0]["id"] == 2499

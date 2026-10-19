@@ -56,9 +56,29 @@ def _progress(msg, quiet):
         sys.stderr.flush()
 
 
-def _list_runs(gh, repo, params, workflow, max_runs):
+API_RESULT_CAP = 1000  # GitHub returns at most 1,000 runs for a filtered listing
+
+
+def _fmt(t):
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _runs_in_window(gh, path, params, start, end, limit):
+    """All runs created in [start, end), splitting the window while GitHub's 1,000-result cap would bite."""
+    window = dict(params, created="%s..%s" % (_fmt(start), _fmt(end - timedelta(seconds=1))))
+    total = gh.get_json(path, dict(window, per_page=1)).get("total_count", 0)
+    if total > API_RESULT_CAP and end - start > timedelta(minutes=30):
+        middle = start + (end - start) / 2
+        newer = _runs_in_window(gh, path, params, middle, end, limit)
+        if len(newer) >= limit:
+            return newer[:limit]
+        return newer + _runs_in_window(gh, path, params, start, middle, limit - len(newer))
+    return gh.paginate(path, "workflow_runs", window, limit=min(limit, API_RESULT_CAP)) if total else []
+
+
+def _list_runs(gh, repo, params, workflow, max_runs, start, end):
     if not workflow:
-        return gh.paginate("/repos/%s/actions/runs" % repo, "workflow_runs", params, limit=max_runs)
+        return _runs_in_window(gh, "/repos/%s/actions/runs" % repo, params, start, end, max_runs)
     needle = workflow.lower()
     workflows = [w for w in gh.paginate("/repos/%s/actions/workflows" % repo, "workflows")
                  if needle in (w.get("name") or "").lower() or needle in (w.get("path") or "").lower()]
@@ -66,8 +86,8 @@ def _list_runs(gh, repo, params, workflow, max_runs):
         raise GitHubError("no workflow in %s matches %r" % (repo, workflow))
     runs = []
     for w in workflows:
-        runs += gh.paginate("/repos/%s/actions/workflows/%d/runs" % (repo, w["id"]), "workflow_runs", params,
-                            limit=max_runs)
+        runs += _runs_in_window(gh, "/repos/%s/actions/workflows/%d/runs" % (repo, w["id"]), params, start, end,
+                                max_runs)
     runs.sort(key=lambda r: r["created_at"], reverse=True)
     return runs[:max_runs]
 
@@ -94,13 +114,15 @@ def _prioritise_logs(candidates, passed_keys, max_logs, per_group=2):
 def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=500, scan_passing=False, quiet=False,
             max_logs=400):
     """Fetch runs, jobs and failed-job logs. Returns (jobs, info)."""
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    params = {"created": ">=" + since, "status": "completed"}
+    end = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=1)
+    start = end - timedelta(days=days)
+    since = start.strftime("%Y-%m-%d")
+    params = {"status": "completed"}
     if branch:
         params["branch"] = branch
     _progress("listing workflow runs since %s... " % since, quiet)
-    runs = _list_runs(gh, repo, params, workflow, max_runs)
-    runs = [r for r in runs if r.get("conclusion") in ("success", "failure")]
+    runs_listed = _list_runs(gh, repo, params, workflow, max_runs, start, end)
+    runs = [r for r in runs_listed if r.get("conclusion") in ("success", "failure")]
     _progress("%d runs\n" % len(runs), quiet)
 
     def jobs_for(run):
@@ -171,6 +193,7 @@ def collect(gh, repo, days=30, workflow=None, branch=None, max_runs=500, scan_pa
         "first_run": min((r["created_at"] for r in runs), default=None),
         "last_run": max((r["created_at"] for r in runs), default=None),
         "workflow_filter": workflow,
+        "hit_max_runs": len(runs_listed) >= max_runs,
         "logs_read": bool(getattr(gh, "token", True)),
         "logs_skipped_by_budget": skipped_logs if getattr(gh, "token", True) else 0,
         "branch_filter": branch,

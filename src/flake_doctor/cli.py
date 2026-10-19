@@ -40,7 +40,7 @@ def scan_main(argv):
     parser.add_argument("--days", type=int, default=30, help="how far back to look (default 30)")
     parser.add_argument("--workflow", help="only workflows whose name or file contains this text")
     parser.add_argument("--branch", help="only runs on this branch")
-    parser.add_argument("--max-runs", type=int, default=1000, help="cap on workflow runs to scan (default 1000)")
+    parser.add_argument("--max-runs", type=int, default=5000, help="cap on workflow runs to scan (default 5000)")
     parser.add_argument("--max-logs", type=int, default=400,
                         help="cap on job logs to download; logs that can prove flakiness are read first (default 400)")
     parser.add_argument("--scan-passing", action="store_true",
