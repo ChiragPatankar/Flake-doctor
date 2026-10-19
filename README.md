@@ -4,6 +4,8 @@
 
 **Find the flaky tests hiding in your CI history.<br>Then prove what causes them, and that the fix works.**
 
+[![PyPI](https://img.shields.io/pypi/v/flake-doctor)](https://pypi.org/project/flake-doctor/)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-flake--doctor-blue?logo=github)](https://github.com/marketplace/actions/flake-doctor-flaky-test-report)
 [![CI](https://github.com/ChiragPatankar/flake-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ChiragPatankar/flake-doctor/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -38,7 +40,7 @@ diagnose and fix each one with evidence instead of `sleep()` and retries.
 <br>
 
 ```bash
-pipx install git+https://github.com/ChiragPatankar/flake-doctor   # PyPI release coming: pipx install flake-doctor
+pipx install flake-doctor        # or: pip install flake-doctor, or run it without installing: uvx flake-doctor
 export GITHUB_TOKEN=...                                            # or `gh auth login`, or ~/.config/flake-doctor/token
 flake-doctor scan owner/repo                                       # or run it inside a clone and omit owner/repo
 ```
@@ -299,7 +301,7 @@ see by reading code. That's why `scan` is the core of this project.
 
 ## 🗺️ Roadmap
 
-- [ ] PyPI release
+- [x] PyPI release and GitHub Marketplace listing
 - [ ] JUnit XML artifacts as an alternative to log parsing
 - [ ] Jest/Vitest and Go test output
 - [ ] GitLab CI
