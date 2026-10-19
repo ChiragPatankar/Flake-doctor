@@ -309,7 +309,10 @@ see by reading code. That's why `scan` is the core of this project.
 
 ## 🤝 Contributing
 
-Issues and PRs welcome, especially CI log excerpts the parser gets wrong. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and PRs welcome, especially CI log excerpts the parser gets wrong. See [CONTRIBUTING.md](CONTRIBUTING.md),
+and [docs/DESIGN.md](docs/DESIGN.md) for how it works and why each detection rule exists.
+
+Read more: [*I scanned a month of CI from pydantic, aiohttp, fastapi and pandas for flaky tests*](docs/blog/2026-10-flaky-tests-in-popular-python-projects.md).
 
 ## License
 
