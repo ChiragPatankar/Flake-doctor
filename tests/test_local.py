@@ -86,3 +86,12 @@ def test_tied_suspects_are_flagged():
     found = suspects(rows, target)
     assert {s["test"] for s in found} == {"t::P", "t::B"}
     assert all(s.get("tied") for s in found)
+
+
+def test_plugins_that_distort_measurements_are_switched_off(monkeypatch):
+    from flake_doctor import runner
+    monkeypatch.setattr(runner, "_importable", lambda python, module: True)
+    args = runner.PytestRunner(".", sys.executable).base_args
+    for expected in (["-p", "no:randomly"], ["-n", "0"], ["--reruns", "0"], ["-p", "no:flaky"], ["--no-cov"]):
+        joined = " ".join(args)
+        assert " ".join(expected) in joined, (expected, args)

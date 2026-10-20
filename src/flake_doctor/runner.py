@@ -57,6 +57,10 @@ class PytestRunner:
             self.base_args += ["--reruns", "0"]
         if _importable(self.python, "flaky"):
             self.base_args += ["-p", "no:flaky"]
+        # Coverage slows every run, and parallel runs (--workers) corrupt each other's data files,
+        # which shows up as failures that have nothing to do with the test.
+        if _importable(self.python, "pytest_cov"):
+            self.base_args += ["--no-cov"]
 
     def run(self, args, targets=(), seed=None, order=None, timeout=600):
         """Run pytest once. Returns the plugin's report dict plus 'output' (tail of stdout)."""

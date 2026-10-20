@@ -216,8 +216,8 @@ every later test (and, in production, for every later customer).
 
 > [!IMPORTANT]
 > The local commands run *your project's* interpreter (auto-detecting `.venv`/`venv`, or `--python`), switch
-> off plugins that hide flakiness while measuring (pytest-randomly's ordering, rerunfailures, xdist), and never
-> modify your files.
+> off plugins that hide or distort flakiness while measuring (pytest-randomly's ordering, rerunfailures, xdist,
+> pytest-cov), and never modify your files.
 
 [`causes.md`](plugins/flake-doctor/skills/flake-doctor/references/causes.md) is a practical guide to each kind of
 flakiness, the right fix, and the "fixes" that only hide it.

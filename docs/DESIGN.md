@@ -137,6 +137,8 @@ Things that would hide flakiness are switched off while measuring:
 - pytest-rerunfailures (`--reruns 0`) and `flaky` (`-p no:flaky`), which would retry the failure away;
 - xdist (`-n 0`), so order is meaningful;
 - the cache provider, so `--lf`/`--ff` don't reorder;
+- pytest-cov (`--no-cov`): found on aiohttp, whose settings enable coverage, where four parallel runs
+  corrupted each other's coverage files and showed up as 7 bogus "failures";
 - `PYTHONHASHSEED` is removed from the environment, so every run gets its own string-hash seed, as on CI.
   Set-ordering bugs (like `list(set(tags))`) only show up across processes.
 
