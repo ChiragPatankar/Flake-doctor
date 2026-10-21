@@ -1,0 +1,115 @@
+# Run flake-doctor on GitHub's machines instead of your laptop.
+# Actions tab -> "Scan a repo" -> Run workflow, then fill in the form.
+#
+# Reading another repository's job logs needs a token: add a fine-grained token with
+# read-only access to public repositories as the repository secret SCAN_TOKEN
+# (Settings -> Secrets and variables -> Actions -> New repository secret).
+name: Scan a repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Repository to scan (owner/name)"
+        required: true
+        default: "aio-libs/aiohttp"
+      days:
+        description: "Days of CI history"
+        default: "30"
+      workflow:
+        description: "Only workflows whose name or file contains this (optional)"
+        default: ""
+      max_logs:
+        description: "Max job logs to download"
+        default: "400"
+      test:
+        description: "Optional: a test to reproduce, e.g. tests/test_x.py::test_y"
+        default: ""
+      install:
+        description: "Command to install the repo for testing (used only with a test)"
+        default: "pip install -e . pytest"
+      runs:
+        description: "Reruns of the test (alone, under CPU stress)"
+        default: "60"
+      shuffle_runs:
+        description: "Reruns in shuffled suite order (0 to skip)"
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --quiet .
+      - name: Scan CI history
+        env:
+          GITHUB_TOKEN: ${{ secrets.SCAN_TOKEN }}
+          REPO: ${{ inputs.repo }}
+          DAYS: ${{ inputs.days }}
+          WORKFLOW: ${{ inputs.workflow }}
+          MAX_LOGS: ${{ inputs.max_logs }}
+        run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::warning::No SCAN_TOKEN secret: only job-level results are possible (logs need a token)."
+          fi
+          args=(scan "$REPO" --days "$DAYS" --max-logs "$MAX_LOGS"
+                --markdown-output scan.md --json-output scan.json)
+          [ -n "$WORKFLOW" ] && args+=(--workflow "$WORKFLOW")
+          flake-doctor "${args[@]}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scan-report
+          path: scan.*
+
+  reproduce:
+    if: inputs.test != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: flake-doctor
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.repo }}
+          path: target
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install flake-doctor
+        run: python -m pip install --quiet ./flake-doctor
+      - name: Install the target project
+        working-directory: target
+        env:
+          INSTALL: ${{ inputs.install }}
+        run: bash -c "$INSTALL"
+      - name: Rerun the test
+        working-directory: target
+        env:
+          TEST: ${{ inputs.test }}
+          RUNS: ${{ inputs.runs }}
+          SHUFFLE_RUNS: ${{ inputs.shuffle_runs }}
+        run: |
+          mode=both
+          [ "$SHUFFLE_RUNS" = "0" ] && mode=isolated
+          flake-doctor run "$TEST" --python "$(which python)" --mode "$mode" --runs "$RUNS" \
+            --shuffle-runs "$SHUFFLE_RUNS" --stress --workers 2 --json ../run.json | tee ../run.txt
+          {
+            echo "## Reproducing \`$TEST\`"
+            echo
+            echo '```'
+            cat ../run.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: run-report
+          path: run.*

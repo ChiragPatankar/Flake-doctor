@@ -58,6 +58,10 @@ flake-doctor scan owner/repo                                       # or run it i
 
 Job logs are cached in `~/.cache/flake-doctor`, so a repeat scan only downloads what's new.
 
+To run scans and reruns on GitHub's machines instead of your own, fork this repo and use the
+**Scan a repo** workflow (Actions tab → *Scan a repo* → *Run workflow*); see
+[`scan-repo.yml`](.github/workflows/scan-repo.yml) for the one secret it needs.
+
 </details>
 
 <details>
