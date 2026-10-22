@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0 (2026-10-21)
 
 - `flake-doctor hints` finds **collection-time** values: clocks, randomness and process/environment reads
   evaluated when pytest collects tests (in `parametrize`, fixture `params`, default arguments, module and
