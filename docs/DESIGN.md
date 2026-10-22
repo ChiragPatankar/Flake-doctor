@@ -178,6 +178,25 @@ Each check runs the order up to `--tries` times (default 3) and counts as failin
 intermittently flaky victim doesn't send the search down the wrong half. In the warehouse example it narrows
 70 tests that ran before the victim down to the one polluting parameter case in 29 pytest runs (7 seconds).
 
+### Collection-time values (`collection.py`)
+
+pytest imports every test module before running anything, so decorator arguments (`parametrize`, fixture
+`params`), default arguments, and module- and class-level statements are evaluated once, at collection. When
+such a value comes from the clock, a random generator or the process, the test later runs against a value that
+is stale (`date.today()` from before midnight) or differs between processes (a random value, and with it the
+*test ID* when it's a string parameter).
+
+The check is an AST pass: it resolves import aliases (`from datetime import date`, `import datetime as dt`)
+to dotted names, walks only the expressions that run eagerly (skipping lambda and function bodies), and
+matches calls against clock, randomness and process lists. Seeded generators (`random.Random(42)`) are
+fine. Environment reads are reported only when they become test data (in `parametrize`, fixture `params` or
+defaults), because at module level or in a `skipif` they're usually deliberate configuration. In project
+modules a test imports, module- and class-level values are reported as "import-time".
+
+On pydantic's `tests/test_datetime.py` before the fix for pydantic#14030 it flags exactly the five lines
+the fix changed. Across about 900 test files from pydantic, aiohttp, urllib3 and fastapi it reports five
+values, one of which (a random UUID that ends up in a test ID) was an unreported problem.
+
 ### Hints (`hints.py`)
 
 Regexes for sleeps, clocks, randomness, set/filesystem ordering, network, fixed ports and paths, plus AST checks

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (unreleased)
+
+- `flake-doctor hints` finds **collection-time** values: clocks, randomness and process/environment reads
+  evaluated when pytest collects tests (in `parametrize`, fixture `params`, default arguments, module and
+  class level), plus **import-time** values in the project modules tests import. This is the pattern behind
+  pydantic#14030 (`date.today()` in `parametrize`, failing when CI crosses midnight), and it needs no CI
+  history, so it finds flaky tests before they fail. Suggested by a reader of the launch post on dev.to.
+- `flake-doctor hints <folder>` audits every test file in a folder; `--only CATEGORY` filters, and `--fail`
+  exits 1 when anything is found, for CI or pre-commit.
+- `flake-doctor run` passes `--no-cov` when pytest-cov is installed: coverage slowed every rerun, and parallel
+  reruns corrupted each other's coverage files, which looked like failures.
+- Tied "suspects" (tests that match the failures equally well) are flagged as tied instead of ranked arbitrarily.
+- A "Scan a repo" workflow runs scans and reruns on GitHub's machines.
+
 ## 0.1.0 (2026-10-19)
 
 First release.

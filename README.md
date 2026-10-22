@@ -217,6 +217,7 @@ every later test (and, in production, for every later customer).
 | `flake-doctor run <test>` | failure rate alone and in shuffled suite order, grouped failure messages, tests that correlate with failure, a verdict, and how many clean runs it takes to trust a fix. `--stress` loads every CPU core like a crowded CI runner; `--json` saves before/after results. |
 | `flake-doctor polluter <test> --seed N` | the exact test that breaks it when run first, plus a two-test reproduction command |
 | `flake-doctor hints <test>` | suspicious lines in the test and the code it imports: sleeps, real clocks, unseeded randomness, set/filesystem ordering, unrestored globals and env vars, network calls, fixed ports and paths |
+| `flake-doctor hints tests/ --only collection-time --fail` | audits a whole suite for values computed when pytest *collects* tests, like `date.today()` inside `parametrize`: the pattern behind the pydantic midnight bug. Needs no CI history, so it catches these before they fail; `--fail` makes it a CI check. |
 
 > [!IMPORTANT]
 > The local commands run *your project's* interpreter (auto-detecting `.venv`/`venv`, or `--python`), switch

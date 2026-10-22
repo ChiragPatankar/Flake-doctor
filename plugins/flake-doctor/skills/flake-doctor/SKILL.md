@@ -23,6 +23,7 @@ Run the local commands from the project root; they auto-detect `.venv`/`venv`
 | `flake-doctor run <node_id>` | measure failure rate alone and in shuffled suite order; get a verdict |
 | `flake-doctor polluter <node_id> --seed N` | find the test that breaks this one when it runs first |
 | `flake-doctor hints <node_id>` | list suspicious lines (sleeps, clocks, random, sets, globals, network) in the test and the code it imports |
+| `flake-doctor hints tests/ --only collection-time` | find clocks/randomness evaluated when tests are collected (e.g. `date.today()` in `parametrize`): flaky tests that may not have failed yet |
 
 `references/causes.md` has fix patterns for each cause, plus the "fixes" that only
 hide flakiness. Read the relevant section before writing a fix.

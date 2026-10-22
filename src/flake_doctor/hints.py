@@ -4,9 +4,16 @@ Scans a test file and, by default, the project modules it imports (one level
 deep), and lists suspicious lines grouped by cause. These are hints for where to
 look, not proof: confirm with `flake-doctor run` and by reading the code.
 
+Given a folder, it scans every test file in it. The "collection-time" check finds
+clocks, randomness and process values evaluated when pytest collects tests (in
+parametrize, fixture params, defaults, module level), which is how a test ends up
+failing only when CI crosses midnight. It needs no CI history, so it also finds
+flaky tests that haven't failed yet.
+
 Usage:
   flake-doctor hints tests/test_orders.py::test_checkout
   flake-doctor hints tests/test_orders.py src/orders/service.py --no-follow
+  flake-doctor hints tests/ --only collection-time --fail     # e.g. in CI or pre-commit
 """
 
 import argparse
@@ -15,6 +22,8 @@ import json
 import re
 import sys
 from pathlib import Path
+
+from .collection import collection_time_hints, is_test_path
 
 # (category, regex, why)
 PATTERNS = [
@@ -131,6 +140,10 @@ def scan_file(path, func=None):
                 break
     if tree is not None:
         hints += module_mutations(tree)
+        collected = collection_time_hints(tree, is_test_path(path))
+        # The collection-time finding is the specific version of a generic clock/randomness hint on that line.
+        specific = {line for line, _, _ in collected}
+        hints = [h for h in hints if not (h[0] in specific and h[1] in ("clock", "randomness"))] + collected
     seen = set()
     out = []
     for lineno, category, why in sorted(hints):
@@ -149,18 +162,30 @@ def scan_file(path, func=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="flake-doctor hints", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("paths", nargs="+", help="test node id(s) or file paths")
+    parser.add_argument("paths", nargs="+", help="test node id(s), files, or folders (scans their test files)")
     parser.add_argument("--root", default=".", help="project root (for resolving imports)")
     parser.add_argument("--no-follow", action="store_true", help="don't scan imported project modules")
     parser.add_argument("--json", action="store_true", help="print JSON instead of text")
+    parser.add_argument("--only", action="append", metavar="CATEGORY",
+                        help="only report these categories (repeatable or comma-separated), "
+                             "e.g. collection-time,import-time")
+    parser.add_argument("--fail", action="store_true", help="exit with status 1 if anything is reported")
     args = parser.parse_args(argv)
+    only = {c.strip() for spec in (args.only or []) for c in spec.split(",") if c.strip()}
 
     root = Path(args.root).resolve()
     queue = []
     for p in args.paths:
         file_part, _, func = p.partition("::")
         func = func.split("::")[-1].split("[")[0] if func else None
-        queue.append((Path(file_part) if Path(file_part).is_absolute() else root / file_part, func, True))
+        path = Path(file_part) if Path(file_part).is_absolute() else root / file_part
+        if path.is_dir():
+            skip = {".venv", "venv", ".git", "node_modules", ".tox", ".nox", "site-packages"}
+            for found in sorted(path.rglob("*.py")):
+                if is_test_path(found) and not skip.intersection(found.parts):
+                    queue.append((found, None, True))
+        else:
+            queue.append((path, func, True))
 
     report = {}
     done = set()
@@ -176,26 +201,32 @@ def main(argv=None):
             key = str(path.relative_to(root))
         except ValueError:
             key = str(path)
-        report[key] = hints
+        report[key] = [h for h in hints if not only or h["category"] in only]
         if given and not args.no_follow and tree is not None:
             for dep in local_imports(tree, path, root):
                 if dep not in done:
                     queue.append((dep, None, False))
 
+    total = sum(len(h) for h in report.values())
+    status = 1 if args.fail and total else 0
     if args.json:
         print(json.dumps(report, indent=2))
-        return
+        return status
     total = 0
     clean = [k for k, h in report.items() if not h]
     for key, hints in report.items():
         if not hints:
             continue
         print("\n%s" % key)
+        explained = set()
         for h in hints:
             total += 1
             mark = "*" if h["in_target"] else " "
-            print(" %s L%-4d [%s] %s\n          -> %s" % (mark, h["line"], h["category"], h["code"], h["why"]))
+            why = h["why"] if h["why"] not in explained else "(same as above)"
+            explained.add(h["why"])
+            print(" %s L%-4d [%s] %s\n          -> %s" % (mark, h["line"], h["category"], h["code"], why))
     if clean:
-        print("\nNo hints in: %s" % ", ".join(clean))
+        print("\nNo hints in: %s" % (", ".join(clean) if len(clean) <= 8 else "%d files" % len(clean)))
     print("\n%d hint(s). '*' = inside the target test. Hints are leads, not proof." % total)
+    return status
 
